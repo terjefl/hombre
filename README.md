@@ -73,6 +73,7 @@ The repo includes a `docker-compose.yml` ready to go. Edit the environment varia
 services:
   hombre:
     image: ghcr.io/lovethatbrandx/hombre/hombre:latest
+    container_name: hombre
     ports:
       - "5000:5000"
     environment:
@@ -81,6 +82,12 @@ services:
       - HONCHO_COMPOSE_DIR=/path/to/honcho      # <-- and this
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 ```
 
 Then run:
