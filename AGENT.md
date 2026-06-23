@@ -25,7 +25,7 @@ node --check static/app.js
 
 ## File Locations
 
-- `app.py` — FastAPI backend (auth, proxy, health, chat streaming)
+- `app.py` — FastAPI backend (auth, proxy, health, chat streaming via `/api/workspaces/{wid}/peers/{pid}/chat`)
 - `routes/__init__.py` — Package marker
 - `routes/settings.py` — Settings API (read/write `.env`, restart containers)
 - `static/app.js` — All frontend logic (7 tab modules, Modal, App)
@@ -48,6 +48,7 @@ node --check static/app.js
 ## Honcho API Notes
 
 - Peer card endpoint: `GET /v3/workspaces/{wid}/peers/{pid}/card` (GET only, not POST)
+- Chat endpoint: `POST /v3/workspaces/{wid}/peers/{pid}/chat` — queries a peer's representation using natural language; supports `reasoning_level` (minimal/low/medium/high/max) and `stream: true` for SSE
 - Summaries endpoint: `GET /v3/workspaces/{wid}/sessions/{sid}/summaries` (GET only)
 - Workspace delete: `DELETE /v3/workspaces/{wid}` (requires deleting all sessions first)
 - Session delete: `DELETE /v3/workspaces/{wid}/sessions/{sid}`

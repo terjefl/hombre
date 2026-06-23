@@ -23,7 +23,7 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 - **Overview** - workspace stats, peer/session/conclusion counts at a glance
 - **Peers** - list participants, view representations and peer cards
 - **Sessions** - list conversations, view messages and summaries
-- **Chat** - dialectic queries against a peer's representation (SSE streaming)
+- **Chat** - ask questions about a peer using natural language; Honcho reasons over their accumulated memory (conclusions, representations, messages) and synthesizes an answer with streaming and adjustable reasoning depth
 - **Conclusions** - browse and semantic search reasoning/memory
 - **Messages** - browse messages across all sessions
 - **Settings** - configure LLM providers, embedding models, dialectic levels, and more
