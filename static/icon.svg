@@ -1,39 +1,109 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="100%" height="100%">
   <defs>
-    <clipPath id="sombrero">
-      <path d="M32 4 C20 4 12 14 12 24 L12 28 L4 32 C2 33 2 35 4 36 L12 40 L12 42 C12 44 14 46 16 46 L48 46 C50 46 52 44 52 42 L52 40 L60 36 C62 35 62 33 60 32 L52 28 L52 24 C52 14 44 4 32 4 Z"/>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <clipPath id="sombreroClip">
+      <path d="M 40 200
+               C 80 185, 140 185, 170 185
+               C 180 100, 210 60, 250 60
+               C 290 60, 320 100, 330 185
+               C 360 185, 420 185, 460 200
+               C 470 230, 350 245, 250 245
+               C 150 245, 30 230, 40 200 Z" />
     </clipPath>
+
+    <style>
+      .bg { fill: #111827; }
+      .outline {
+        fill: rgba(0, 168, 232, 0.03);
+        stroke: #00A8E8;
+        stroke-width: 3.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter: url(#glow);
+      }
+      .edge {
+        stroke: #00A8E8;
+        stroke-width: 1;
+        opacity: 0.45;
+        fill: none;
+      }
+      .node {
+        fill: #00A8E8;
+      }
+      .network-group {
+        filter: url(#glow);
+      }
+    </style>
   </defs>
 
-  <!-- Sombrero outline -->
-  <path d="M32 4 C20 4 12 14 12 24 L12 28 L4 32 C2 33 2 35 4 36 L12 40 L12 42 C12 44 14 46 16 46 L48 46 C50 46 52 44 52 42 L52 40 L60 36 C62 35 62 33 60 32 L52 28 L52 24 C52 14 44 4 32 4 Z"
-        fill="none" stroke="#b5daff" stroke-width="1.5" stroke-linejoin="round"/>
+  <rect width="500" height="300" class="bg" rx="12"/>
 
-  <!-- Neural network inside sombrero -->
-  <g clip-path="url(#sombrero)">
-    <!-- Edges -->
-    <line x1="22" y1="18" x2="32" y2="12" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="32" y1="12" x2="42" y2="18" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="22" y1="18" x2="26" y2="28" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="42" y1="18" x2="38" y2="28" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="32" y1="12" x2="32" y2="24" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="26" y1="28" x2="32" y2="24" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="38" y1="28" x2="32" y2="24" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="26" y1="28" x2="20" y2="36" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="38" y1="28" x2="44" y2="36" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="32" y1="24" x2="32" y2="36" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="20" y1="36" x2="32" y2="36" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
-    <line x1="44" y1="36" x2="32" y2="36" stroke="#b5daff" stroke-width="0.8" opacity="0.4"/>
+  <g clip-path="url(#sombreroClip)" class="network-group">
+    
+    <path d="M60,225 L75,195 M60,225 L125,195 M100,225 L75,195 M100,225 L125,195 M100,225 L170,195 M140,225 L125,195 M140,225 L170,195 M140,225 L210,195 M180,225 L170,195 M180,225 L210,195 M180,225 L250,195 M220,225 L170,195 M220,225 L210,195 M220,225 L250,195 M220,225 L290,195 M250,225 L210,195 M250,225 L250,195 M250,225 L290,195 M280,225 L210,195 M280,225 L250,195 M280,225 L290,195 M280,225 L330,195 M320,225 L250,195 M320,225 L290,195 M320,225 L330,195 M360,225 L290,195 M360,225 L330,195 M360,225 L375,195 M400,225 L330,195 M400,225 L375,195 M400,225 L425,195 M440,225 L375,195 M440,225 L425,195" class="edge"/>
 
-    <!-- Nodes -->
-    <circle cx="32" cy="12" r="2.5" fill="#b5daff"/>
-    <circle cx="22" cy="18" r="2" fill="#b5daff"/>
-    <circle cx="42" cy="18" r="2" fill="#b5daff"/>
-    <circle cx="32" cy="24" r="3" fill="#b5daff"/>
-    <circle cx="26" cy="28" r="2" fill="#b5daff"/>
-    <circle cx="38" cy="28" r="2" fill="#b5daff"/>
-    <circle cx="20" cy="36" r="1.5" fill="#b5daff" opacity="0.7"/>
-    <circle cx="32" cy="36" r="2" fill="#b5daff" opacity="0.7"/>
-    <circle cx="44" cy="36" r="1.5" fill="#b5daff" opacity="0.7"/>
+    <path d="M170,195 L190,150 M170,195 L220,150 M210,195 L190,150 M210,195 L220,150 M210,195 L250,150 M250,195 L220,150 M250,195 L250,150 M250,195 L280,150 M290,195 L250,150 M290,195 L280,150 M290,195 L310,150 M330,195 L280,150 M330,195 L310,150" class="edge"/>
+
+    <path d="M190,150 L210,110 M190,150 L250,110 M220,150 L210,110 M220,150 L250,110 M220,150 L290,110 M250,150 L210,110 M250,150 L250,110 M250,150 L290,110 M280,150 L210,110 M280,150 L250,110 M280,150 L290,110 M310,150 L250,110 M310,150 L290,110" class="edge"/>
+
+    <path d="M210,110 L230,75 M210,110 L250,75 M250,110 L230,75 M250,110 L250,75 M250,110 L270,75 M290,110 L250,75 M290,110 L270,75" class="edge"/>
+
+    <path d="M60,225 L100,225 L140,225 L180,225 L220,225 L250,225 L280,225 L320,225 L360,225 L400,225 L440,225" class="edge"/>
+    <path d="M75,195 L125,195 L170,195 L210,195 L250,195 L290,195 L330,195 L375,195 L425,195" class="edge"/>
+    <path d="M190,150 L220,150 L250,150 L280,150 L310,150" class="edge"/>
+    <path d="M210,110 L250,110 L290,110" class="edge"/>
+    <path d="M230,75 L250,75 L270,75" class="edge"/>
+    <path d="M75,195 L170,195 M125,195 L210,195 M170,195 L250,195 M210,195 L290,195 M250,195 L330,195 M290,195 L375,195 M330,195 L425,195" class="edge"/>
+
+    <circle cx="60" cy="225" r="3.5" class="node"/>
+    <circle cx="100" cy="225" r="3.5" class="node"/>
+    <circle cx="140" cy="225" r="3.5" class="node"/>
+    <circle cx="180" cy="225" r="3.5" class="node"/>
+    <circle cx="220" cy="225" r="3.5" class="node"/>
+    <circle cx="250" cy="225" r="3.5" class="node"/>
+    <circle cx="280" cy="225" r="3.5" class="node"/>
+    <circle cx="320" cy="225" r="3.5" class="node"/>
+    <circle cx="360" cy="225" r="3.5" class="node"/>
+    <circle cx="400" cy="225" r="3.5" class="node"/>
+    <circle cx="440" cy="225" r="3.5" class="node"/>
+    
+    <circle cx="75" cy="195" r="3.5" class="node"/>
+    <circle cx="125" cy="195" r="3.5" class="node"/>
+    <circle cx="170" cy="195" r="3.5" class="node"/>
+    <circle cx="210" cy="195" r="3.5" class="node"/>
+    <circle cx="250" cy="195" r="3.5" class="node"/>
+    <circle cx="290" cy="195" r="3.5" class="node"/>
+    <circle cx="330" cy="195" r="3.5" class="node"/>
+    <circle cx="375" cy="195" r="3.5" class="node"/>
+    <circle cx="425" cy="195" r="3.5" class="node"/>
+    
+    <circle cx="190" cy="150" r="3.5" class="node"/>
+    <circle cx="220" cy="150" r="3.5" class="node"/>
+    <circle cx="250" cy="150" r="3.5" class="node"/>
+    <circle cx="280" cy="150" r="3.5" class="node"/>
+    <circle cx="310" cy="150" r="3.5" class="node"/>
+    
+    <circle cx="210" cy="110" r="3.5" class="node"/>
+    <circle cx="250" cy="110" r="3.5" class="node"/>
+    <circle cx="290" cy="110" r="3.5" class="node"/>
+    
+    <circle cx="230" cy="75" r="3.5" class="node"/>
+    <circle cx="250" cy="75" r="3.5" class="node"/>
+    <circle cx="270" cy="75" r="3.5" class="node"/>
   </g>
+
+  <path class="outline" d="M 40 200
+           C 80 185, 140 185, 170 185
+           C 180 100, 210 60, 250 60
+           C 290 60, 320 100, 330 185
+           C 360 185, 420 185, 460 200
+           C 470 230, 350 245, 250 245
+           C 150 245, 30 230, 40 200 Z" />
 </svg>
