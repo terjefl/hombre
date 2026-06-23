@@ -1,6 +1,5 @@
-<img src="static/hombre_logo.jpg" alt="Hombre" width="400">
-
-> A self-hosted web UI for Honcho, because the official dashboard isn't self-hostable.
+<div align="center">
+  <img src="static/hombre_logo.jpg" alt="Hombre" width="400">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
@@ -8,6 +7,8 @@
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![OpenCode](https://img.shields.io/badge/~%24_OpenCode-000000?style=for-the-badge&logo=terminal&logoColor=green)](https://opencode.ai)
 [![MiMo](https://img.shields.io/badge/MiMo-FF6B35?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/XiaomiMiMo/MiMo-V2.5)
+
+</div>
 
 ## Why This Exists
 
