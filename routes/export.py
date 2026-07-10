@@ -276,7 +276,7 @@ class ImportConfirmRequest(BaseModel):
 class MergeRequest(BaseModel):
     source_workspace_id: str
     target_workspace_id: str
-    conflict_strategy: str = "rename"  # skip | rename | overwrite
+    conflict_strategy: str = "rename"  # skip | rename
 
 
 # ─── Workspace Helpers ────────────────────────────────────────────────────
@@ -328,8 +328,8 @@ async def merge_preview(req: MergeRequest):
 
     Shows conflict count, non-conflicting peers, and detailed conflict info.
     """
-    if req.conflict_strategy not in ("skip", "rename", "overwrite"):
-        raise HTTPException(status_code=400, detail="conflict_strategy_must_be_skip_rename_or_overwrite")
+    if req.conflict_strategy not in ("skip", "rename"):
+        raise HTTPException(status_code=400, detail="conflict_strategy_must_be_skip_or_rename")
 
     if not VALID_ID.match(req.source_workspace_id) or not VALID_ID.match(req.target_workspace_id):
         raise HTTPException(status_code=400, detail="invalid_workspace_id")
@@ -408,10 +408,9 @@ async def merge_workspaces(req: MergeRequest):
     Handles peer and session merging based on the chosen conflict strategy:
     - skip:     don't copy conflicting items
     - rename:   add -merged suffix (-merged-1, -merged-2, etc.)
-    - overwrite: replace target item data
     """
-    if req.conflict_strategy not in ("skip", "rename", "overwrite"):
-        raise HTTPException(status_code=400, detail="conflict_strategy_must_be_skip_rename_or_overwrite")
+    if req.conflict_strategy not in ("skip", "rename"):
+        raise HTTPException(status_code=400, detail="conflict_strategy_must_be_skip_or_rename")
 
     if not VALID_ID.match(req.source_workspace_id) or not VALID_ID.match(req.target_workspace_id):
         raise HTTPException(status_code=400, detail="invalid_workspace_id")
@@ -470,12 +469,10 @@ async def merge_workspaces(req: MergeRequest):
                 report["peers_skipped"] += 1
                 log.info("Skipping conflicting peer: %s", pid)
                 continue
-            elif strategy == "rename":
+            else:  # rename
                 new_id = _resolve_conflict_id(pid, active_target_ids, suffix="merged")
                 active_target_ids.add(new_id)
                 report["peers_renamed"] += 1
-            else:  # overwrite
-                new_id = pid
         else:
             new_id = pid
 
@@ -510,12 +507,10 @@ async def merge_workspaces(req: MergeRequest):
                 report["sessions_skipped"] += 1
                 log.info("Skipping conflicting session: %s", sid)
                 continue
-            elif strategy == "rename":
+            else:  # rename
                 new_id = _resolve_conflict_id(sid, active_target_session_ids, suffix="merged")
                 active_target_session_ids.add(new_id)
                 report["sessions_renamed"] += 1
-            else:  # overwrite
-                new_id = sid
         else:
             new_id = sid
 

@@ -606,7 +606,7 @@ const ExportImport = {
       <select class="input mt-1" id="import-strategy">
         <option value="skip">Skip conflicting resources</option>
         <option value="rename">Rename with -imported suffix</option>
-        <option value="overwrite">Overwrite existing resources</option>
+        <option value="rename">Rename (add -merged suffix)</option>
       </select>
     `;
     bodyParts.push(strategyDiv);
@@ -2196,7 +2196,6 @@ const SettingsTab = {
     const strategyOptions = [
       { value: 'skip', label: 'Skip (don\'t merge conflicting items)' },
       { value: 'rename', label: 'Rename (add -merged suffix)' },
-      { value: 'overwrite', label: 'Overwrite (replace target data)' },
     ];
 
     const strategyRadios = strategyOptions.map(opt => `
