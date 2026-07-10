@@ -1937,7 +1937,11 @@ const SettingsTab = {
     const flat = {};
     for (const [key, val] of Object.entries(sections)) {
       if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-        if ('MODEL_CONFIG__MODEL' in val || Object.keys(val).some(k => k.startsWith('LLM_'))) {
+        // Flat sections (all values are strings) — store directly
+        const allStrings = Object.values(val).every(v => typeof v === 'string');
+        if (allStrings && Object.keys(val).length > 0) {
+          Object.assign(flat, val);
+        } else if ('MODEL_CONFIG__MODEL' in val || Object.keys(val).some(k => k.startsWith('LLM_'))) {
           Object.assign(flat, val);
         } else {
           for (const [subKey, subVal] of Object.entries(val)) {
@@ -1958,7 +1962,7 @@ const SettingsTab = {
       { key: 'llm', title: 'LLM Provider', icon: '🔑', expanded: true },
       { key: 'embeddings', title: 'Embeddings', icon: '📐', expanded: true },
       { key: 'deriver', title: 'Deriver (Background Worker)', icon: '⚙️', expanded: false },
-      { key: 'dialectic', title: 'Dialectic Levels', icon: '💬', expanded: false },
+      { key: 'dialectic', title: 'LLM Model (Dialectic)', icon: '💬', expanded: false },
       { key: 'summary', title: 'Summary', icon: '📝', expanded: false },
       { key: 'dream', title: 'Dream', icon: '💤', expanded: false },
       { key: 'advanced', title: 'Advanced (Read-only)', icon: '🔧', expanded: false },
@@ -2081,24 +2085,6 @@ const SettingsTab = {
 
   renderSectionFields(sectionKey, data) {
     if (!data) return '';
-
-    if (sectionKey === 'dialectic') {
-      const levels = ['minimal', 'low', 'medium', 'high', 'max'];
-      let html = '';
-      for (const level of levels) {
-        const levelData = data[level];
-        if (!levelData) continue;
-        html += `
-          <div class="mb-3">
-            <div class="text-xs font-medium text-muted mb-2" style="text-transform:uppercase;letter-spacing:0.05em">${level}</div>
-            <div class="flex flex-col gap-2">
-              ${Object.entries(levelData).map(([key, val]) => this.renderField(key, val)).join('')}
-            </div>
-          </div>
-        `;
-      }
-      return html;
-    }
 
     if (sectionKey === 'dream') {
       let html = '';

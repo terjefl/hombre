@@ -19,6 +19,15 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 HONCHO_ENV_PATH = os.environ.get("HONCHO_ENV_PATH", "")
 HONCHO_COMPOSE_DIR = os.environ.get("HONCHO_COMPOSE_DIR", "")
 
+DIALECTIC_LEVELS = ["minimal", "low", "medium", "high", "max"]
+
+# Virtual keys the frontend sends — mapped to all dialectic levels on write.
+_DIALECTIC_VIRTUAL_KEYS = {
+    "DIALECTIC_MODEL": "MODEL_CONFIG__MODEL",
+    "DIALECTIC_BASE_URL": "MODEL_CONFIG__OVERRIDES__BASE_URL",
+    "DIALECTIC_TRANSPORT": "MODEL_CONFIG__TRANSPORT",
+}
+
 WRITABLE_KEYS = {
     "LLM_OPENAI_API_KEY",
     "EMBEDDING_MODEL_CONFIG__MODEL",
@@ -28,21 +37,6 @@ WRITABLE_KEYS = {
     "DERIVER_MODEL_CONFIG__MODEL",
     "DERIVER_MODEL_CONFIG__OVERRIDES__BASE_URL",
     "DERIVER_MODEL_CONFIG__TRANSPORT",
-    "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL",
-    "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL",
-    "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT",
-    "DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL",
-    "DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__BASE_URL",
-    "DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT",
-    "DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL",
-    "DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__BASE_URL",
-    "DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT",
-    "DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL",
-    "DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__BASE_URL",
-    "DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT",
-    "DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL",
-    "DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__BASE_URL",
-    "DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT",
     "SUMMARY_MODEL_CONFIG__MODEL",
     "SUMMARY_MODEL_CONFIG__OVERRIDES__BASE_URL",
     "SUMMARY_MODEL_CONFIG__TRANSPORT",
@@ -53,6 +47,10 @@ WRITABLE_KEYS = {
     "DREAM_INDUCTION_MODEL_CONFIG__OVERRIDES__BASE_URL",
     "DREAM_INDUCTION_MODEL_CONFIG__TRANSPORT",
 }
+# Add expanded dialectic level keys (broadcast by write_settings)
+for _level in DIALECTIC_LEVELS:
+    for _suffix in _DIALECTIC_VIRTUAL_KEYS.values():
+        WRITABLE_KEYS.add(f"DIALECTIC_LEVELS__{_level}__{_suffix}")
 
 # ---------------------------------------------------------------------------
 # Audit logging
@@ -196,31 +194,9 @@ async def read_settings(request: Request):
             "DERIVER_MODEL_CONFIG__TRANSPORT": env.get("DERIVER_MODEL_CONFIG__TRANSPORT", ""),
         },
         "dialectic": {
-            "minimal": {
-                "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL", ""),
-                "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
-                "DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT", ""),
-            },
-            "low": {
-                "DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL": env.get("DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL", ""),
-                "DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__BASE_URL": env.get("DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
-                "DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT": env.get("DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT", ""),
-            },
-            "medium": {
-                "DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL": env.get("DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL", ""),
-                "DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__BASE_URL": env.get("DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
-                "DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT": env.get("DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT", ""),
-            },
-            "high": {
-                "DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL": env.get("DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL", ""),
-                "DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__BASE_URL": env.get("DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
-                "DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT": env.get("DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT", ""),
-            },
-            "max": {
-                "DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL": env.get("DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL", ""),
-                "DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__BASE_URL": env.get("DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
-                "DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT": env.get("DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT", ""),
-            },
+            "DIALECTIC_MODEL": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL", ""),
+            "DIALECTIC_BASE_URL": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL", ""),
+            "DIALECTIC_TRANSPORT": env.get("DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT", ""),
         },
         "summary": {
             "SUMMARY_MODEL_CONFIG__MODEL": env.get("SUMMARY_MODEL_CONFIG__MODEL", ""),
@@ -249,8 +225,20 @@ async def read_settings(request: Request):
 async def write_settings(req: SettingsWriteRequest, request: Request):
     _require_env_path()
     user = _get_user(request)
-    changed_keys = list(req.settings.keys())
-    write_env_file(HONCHO_ENV_PATH, req.settings)
+    data = dict(req.settings)
+
+    # Broadcast dialectic virtual keys to all 5 levels
+    dialectic_expansions = {}
+    for virtual_key, suffix in _DIALECTIC_VIRTUAL_KEYS.items():
+        if virtual_key in data:
+            for level in DIALECTIC_LEVELS:
+                real_key = f"DIALECTIC_LEVELS__{level}__{suffix}"
+                dialectic_expansions[real_key] = data[virtual_key]
+            del data[virtual_key]
+    data.update(dialectic_expansions)
+
+    changed_keys = list(data.keys())
+    write_env_file(HONCHO_ENV_PATH, data)
     _audit("settings.write", user=user, detail=f"keys={changed_keys}")
     return {"status": "ok", "env_path": HONCHO_ENV_PATH}
 
