@@ -1077,6 +1077,56 @@ tr:hover .btn-delete-inline {
   font-size: 11px;
 }
 
+.merge-preview-section-group {
+  border-top: 1px solid var(--border);
+}
+
+.merge-preview-group-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 8px 14px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.merge-preview-section {
+  padding: 6px 14px;
+}
+
+.merge-preview-section-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.merge-preview-id-list {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 2px;
+}
+
+.merge-preview-id-list code {
+  font-size: 11px;
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.merge-preview-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 5%, transparent);
+}
+
+.merge-preview-note strong {
+  color: var(--text);
+}
+
 /* ─── Credentials Section ─── */
 .credentials-list {
   display: flex;

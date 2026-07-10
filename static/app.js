@@ -2264,18 +2264,114 @@ const SettingsTab = {
   renderMergePreview(result) {
     if (!result) return '';
 
-    const conflictHtml = result.conflicts && result.conflicts.length > 0
-      ? `<div class="merge-preview-conflicts">
-           <div class="text-xs font-medium" style="color:var(--amber)">Conflicts:</div>
-           <div class="merge-conflict-list">
-             ${result.conflicts.map(c => `<code>${App.escapeHtml(c)}</code>`).join(', ')}
-           </div>
-         </div>`
-      : '<div class="text-xs" style="color:var(--green)">No conflicts detected</div>';
+    const strategy = this.mergeState.conflictStrategy;
+    const strategyLabel = strategy === 'skip' ? 'skipped' : 'renamed with -merged suffix';
+    const strategyAction = strategy === 'skip' ? 'will be skipped (not copied)' : 'will be renamed (id-merged)';
+    const strategyActionSessions = strategy === 'skip' ? 'will be skipped (not copied)' : 'will be renamed (id-merged)';
+
+    const nonConflicting = result.non_conflicting || [];
+    const conflicts = result.conflicts || [];
+    const conflictDetails = result.conflict_details || [];
+    const sessionConflicts = result.session_conflicts || [];
+    const sessionsNonConflicting = result.sessions_non_conflicting || 0;
+    const sessionsConflicting = result.sessions_conflicting || 0;
+
+    // Build conflict detail map for peer creation dates
+    const detailMap = {};
+    for (const d of conflictDetails) {
+      detailMap[d.id] = d;
+    }
+
+    // Peer sections
+    let peerCopyHtml = '';
+    if (nonConflicting.length > 0) {
+      const names = nonConflicting.map(id => `<code>${App.escapeHtml(id)}</code>`).join(', ');
+      peerCopyHtml = `
+        <div class="merge-preview-section">
+          <div class="merge-preview-section-title" style="color:var(--green)">
+            Would be copied (${nonConflicting.length})
+          </div>
+          <div class="merge-preview-id-list">${names}</div>
+        </div>
+      `;
+    } else {
+      peerCopyHtml = `
+        <div class="merge-preview-section">
+          <div class="merge-preview-section-title" style="color:var(--text-dim)">
+            Would be copied (0)
+          </div>
+          <div class="text-xs text-muted">All source peers already exist in the target workspace</div>
+        </div>
+      `;
+    }
+
+    let peerConflictHtml = '';
+    if (conflicts.length > 0) {
+      const conflictEntries = conflicts.map(id => {
+        const detail = detailMap[id];
+        let meta = '';
+        if (detail) {
+          const srcDate = detail.source_created && detail.source_created !== 'unknown'
+            ? `source created ${App.formatDate(detail.source_created)}` : '';
+          const tgtDate = detail.target_created && detail.target_created !== 'unknown'
+            ? `target created ${App.formatDate(detail.target_created)}` : '';
+          const parts = [srcDate, tgtDate].filter(Boolean);
+          if (parts.length > 0) meta = ` <span class="text-muted">(${parts.join(' / ')})</span>`;
+        }
+        return `<code>${App.escapeHtml(id)}</code>${meta}`;
+      }).join('');
+
+      peerConflictHtml = `
+        <div class="merge-preview-section">
+          <div class="merge-preview-section-title" style="color:var(--amber)">
+            Conflicts (${conflicts.length})
+          </div>
+          <div class="merge-preview-id-list">${conflictEntries}</div>
+          <div class="text-xs text-muted mt-1">
+            These exist in both workspaces and ${strategyAction}.
+          </div>
+        </div>
+      `;
+    }
+
+    // Session sections
+    let sessionCopyHtml = `
+      <div class="merge-preview-section">
+        <div class="merge-preview-section-title" style="color:var(--green)">
+          Would be copied (${sessionsNonConflicting})
+        </div>
+        ${sessionsNonConflicting === 0
+          ? '<div class="text-xs text-muted">All source sessions already exist in the target workspace</div>'
+          : `<div class="text-xs text-muted">${sessionsNonConflicting} session${sessionsNonConflicting !== 1 ? 's' : ''} unique to the source will be created in the target</div>`
+        }
+      </div>
+    `;
+
+    let sessionConflictHtml = '';
+    if (sessionConflicts.length > 0) {
+      const sessionNames = sessionConflicts.map(id => `<code>${App.escapeHtml(id)}</code>`).join(', ');
+      sessionConflictHtml = `
+        <div class="merge-preview-section">
+          <div class="merge-preview-section-title" style="color:var(--amber)">
+            Conflicts (${sessionConflicts.length})
+          </div>
+          <div class="merge-preview-id-list">${sessionNames}</div>
+          <div class="text-xs text-muted mt-1">
+            These exist in both workspaces and ${strategyActionSessions}.
+          </div>
+        </div>
+      `;
+    }
+
+    // Summary stats line
+    const totalWillCopy = nonConflicting.length + sessionsNonConflicting;
+    const totalConflicts = conflicts.length + sessionConflicts;
+    const totalWillSkipOrRename = totalConflicts;
 
     return `
       <div class="merge-preview-box">
         <div class="merge-preview-header">Preview Results</div>
+
         <div class="merge-preview-stats">
           <div class="merge-stat">
             <span class="merge-stat-label">Source:</span>
@@ -2286,11 +2382,27 @@ const SettingsTab = {
             <span>${result.target_peers || 0} peers, ${result.target_sessions || 0} sessions</span>
           </div>
           <div class="merge-stat">
-            <span class="merge-stat-label">Non-conflicting:</span>
-            <span>${result.non_conflicting || 0} items to copy</span>
+            <span class="merge-stat-label">Action:</span>
+            <span>${totalWillCopy} item${totalWillCopy !== 1 ? 's' : ''} will be copied, ${totalWillSkipOrRename} conflict${totalWillSkipOrRename !== 1 ? 's' : ''} ${strategyLabel}</span>
           </div>
         </div>
-        ${conflictHtml}
+
+        <div class="merge-preview-section-group">
+          <div class="merge-preview-group-header">Peers</div>
+          ${peerCopyHtml}
+          ${peerConflictHtml}
+        </div>
+
+        <div class="merge-preview-section-group">
+          <div class="merge-preview-group-header">Sessions</div>
+          ${sessionCopyHtml}
+          ${sessionConflictHtml}
+        </div>
+
+        <div class="merge-preview-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Merge only copies peers and session structure. <strong>Messages, conclusions, and peer memory are NOT transferred.</strong></span>
+        </div>
       </div>
     `;
   },
