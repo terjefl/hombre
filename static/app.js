@@ -1451,7 +1451,7 @@ const ConclusionsTab = {
           <option value="">Select peer...</option>
           ${App.state.peers.map(p => `<option value="${App.escapeHtml(p.id)}">${App.escapeHtml(p.id)}</option>`).join('')}
         </select>
-        <input type="text" class="input" id="conclusion-search" placeholder="Semantic search..." disabled aria-label="Search conclusions">
+        <input type="text" class="input" id="conclusion-search" placeholder="Semantic search (select a peer first)..." disabled aria-label="Search conclusions">
         <button class="btn btn-primary" id="conclusion-search-btn" data-action="search-conclusions" disabled>Search</button>
       </div>
       <div id="conclusion-results">
@@ -1519,7 +1519,7 @@ const ConclusionsTab = {
 
     try {
       const items = await App.api(`workspaces/${ws.id}/conclusions/query`, {
-        body: { query, top_k: 20, filters: { observer: peerId, observed: peerId } }
+        body: { query, top_k: 100, filters: { observer: peerId, observed: peerId } }
       });
       const resultItems = Array.isArray(items) ? items : [];
       this.state.items = resultItems;
