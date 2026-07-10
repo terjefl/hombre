@@ -1519,7 +1519,7 @@ const ConclusionsTab = {
 
     try {
       const items = await App.api(`workspaces/${ws.id}/conclusions/query`, {
-        body: { query, top_k: 20, filters: { observer_id: peerId } }
+        body: { query, top_k: 20, filters: { observer: peerId, observed: peerId } }
       });
       const resultItems = Array.isArray(items) ? items : [];
       this.state.items = resultItems;
