@@ -56,7 +56,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 # Rate limits: (requests_per_minute, path_prefix)
 RATE_LIMITS: list[tuple[int, str]] = [
     (30,  "/api/settings/"),
-    (30,  "/api/workspaces/"),
+    (120, "/api/workspaces/"),
     (30,  "/api/peers/"),
     (30,  "/api/sessions/"),
     (30,  "/api/messages/"),
