@@ -593,7 +593,7 @@ async def trigger_sync(req: SyncTriggerRequest, request: Request):
 
     log.info("Triggering manual sync for workspace %s", req.workspace_id)
     try:
-        result = await _honcho_request("POST", f"/v3/workspaces/{req.workspace_id}/schedule_dream")
+        result = await _honcho_request("POST", f"/v3/workspaces/{req.workspace_id}/schedule_dream", body={})
         return {"status": "sync_triggered", "workspace_id": req.workspace_id, "result": result}
     except HTTPException as e:
         log.warning("Sync trigger failed for %s: %s", req.workspace_id, e.detail)
@@ -602,7 +602,7 @@ async def trigger_sync(req: SyncTriggerRequest, request: Request):
 
 @sync_router.get("/status/{wid}")
 async def sync_status(wid: str, request: Request):
-    """Get queue status for a workspace (proxies to Honcho queue_status)."""
+    """Get queue status for a workspace (proxies to Honcho queue/status)."""
     if not VALID_ID.match(wid):
         raise HTTPException(status_code=400, detail="invalid_workspace_id")
 
@@ -610,7 +610,7 @@ async def sync_status(wid: str, request: Request):
     _audit("sync.status", user=user, detail=f"workspace={wid}")
 
     try:
-        result = await _honcho_request("GET", f"/v3/workspaces/{wid}/queue_status")
+        result = await _honcho_request("GET", f"/v3/workspaces/{wid}/queue/status")
         return result
     except HTTPException as e:
         log.warning("Sync status failed for %s: %s", wid, e.detail)

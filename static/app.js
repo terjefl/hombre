@@ -18,6 +18,7 @@ const App = {
     await this.loadWorkspaces();
     await this.loadPeersAndSessions();
     this.renderTab('overview');
+    this.initSyncIndicator();
   },
 
   bindNav() {
@@ -89,6 +90,7 @@ const App = {
         localStorage.setItem('hombre_workspace', wsId);
         await this.loadPeersAndSessions();
         this.renderTab(this.state.activeTab);
+        this.refreshSyncIndicator();
       }
     });
 
@@ -402,6 +404,96 @@ const App = {
     }
   },
 
+  /* ─── Sync Indicator (Sidebar) ─── */
+  _syncIndicatorTimer: null,
+
+  initSyncIndicator() {
+    const indicator = document.createElement('div');
+    indicator.id = 'sidebar-sync-indicator';
+    indicator.style.cssText = 'padding:8px 12px;border-top:1px solid var(--border)';
+    indicator.innerHTML = `
+      <div style="cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px" id="sync-indicator-summary">
+        <span id="sidebar-sync-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0"></span>
+        <span id="sidebar-sync-text" style="color:var(--text-dim)">Sync: checking...</span>
+      </div>
+      <div id="sidebar-sync-details" style="display:none;padding-top:6px;font-size:11px;color:var(--text-dim)"></div>
+    `;
+
+    const footer = document.querySelector('.sidebar-footer');
+    footer.parentNode.insertBefore(indicator, footer);
+
+    document.getElementById('sync-indicator-summary').addEventListener('click', () => {
+      const details = document.getElementById('sidebar-sync-details');
+      if (details.style.display === 'none') {
+        details.style.display = 'block';
+        this.refreshSyncIndicator();
+      } else {
+        details.style.display = 'none';
+      }
+    });
+
+    this.refreshSyncIndicator();
+    this._syncIndicatorTimer = setInterval(() => this.refreshSyncIndicator(), 30000);
+  },
+
+  async refreshSyncIndicator() {
+    const ws = this.state.workspace;
+    const dot = document.getElementById('sidebar-sync-dot');
+    const text = document.getElementById('sidebar-sync-text');
+    const details = document.getElementById('sidebar-sync-details');
+    if (!dot || !text) return;
+
+    if (!ws) {
+      dot.style.background = 'var(--text-dim)';
+      text.textContent = 'No workspace';
+      return;
+    }
+
+    try {
+      const data = await this.api(`sync/status/${ws.id}`, { method: 'GET' });
+      const lastSync = data.last_sync || data.last_dream || null;
+      const repPending = parseInt(data.representation_tasks_pending ?? data.deriver_pending ?? 0, 10) || 0;
+      const sumPending = parseInt(data.summary_tasks_pending ?? 0, 10) || 0;
+      const dreamPending = parseInt(data.dream_tasks_pending ?? 0, 10) || 0;
+      const totalPending = repPending + sumPending + dreamPending;
+
+      if (totalPending > 0) {
+        dot.style.background = 'var(--amber)';
+        text.textContent = `Syncing... (${totalPending})`;
+      } else {
+        dot.style.background = 'var(--green)';
+        text.textContent = 'Synced';
+      }
+
+      if (details) {
+        details.innerHTML = `
+          <div style="margin-bottom:4px">Last sync: ${lastSync ? this.formatDateTime(lastSync) : 'Never'}</div>
+          <div style="display:flex;gap:8px;margin-bottom:6px">
+            <span>Rep: ${repPending}</span>
+            <span>Sum: ${sumPending}</span>
+            <span>Dream: ${dreamPending}</span>
+          </div>
+          <button class="btn btn-ghost btn-sm w-full" id="sidebar-sync-trigger-btn" style="font-size:11px;padding:4px 8px">Sync Now</button>
+        `;
+        document.getElementById('sidebar-sync-trigger-btn')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            await this.api('sync/trigger', { body: { workspace_id: ws.id } });
+            this.toast('Sync triggered', 'success');
+            setTimeout(() => this.refreshSyncIndicator(), 2000);
+          } catch (err) {
+            this.toast(`Sync failed: ${err.message}`, 'error');
+          }
+        });
+      }
+    } catch {
+      dot.style.background = 'var(--destructive)';
+      text.textContent = 'Offline';
+      if (details) {
+        details.innerHTML = '<div style="color:var(--destructive)">Honcho unreachable</div>';
+      }
+    }
+  },
 
 };
 
@@ -1688,7 +1780,7 @@ const ConclusionsTab = {
 
   async viewTrash() {
     try {
-      const data = await App.api('trash/conclusions');
+      const data = await App.api('trash/conclusions', { method: 'GET' });
       const items = data.conclusions || [];
 
       if (items.length === 0) {
@@ -2031,12 +2123,6 @@ const SettingsTab = {
       if (sbUrl) sbUrl.value = this._supabaseData.SUPABASE_URL || '';
       if (sbKey) sbKey.value = this._supabaseData.SUPABASE_KEY || '';
       if (sbServiceKey) sbServiceKey.value = this._supabaseData.SUPABASE_SERVICE_KEY || '';
-
-      // Start auto-refresh for sync status
-      this._syncTimer = setInterval(() => {
-        const syncDisplay = document.getElementById('sync-status-display');
-        if (syncDisplay) this.refreshSyncStatus();
-      }, 30000);
     } catch (e) {
       el.innerHTML = `
         <div class="tab-header"><h2>Settings</h2><p>Configure dashboard access and Honcho server models</p></div>
@@ -2116,9 +2202,6 @@ const SettingsTab = {
 
     // Workspace Merge section (between advanced and sticky bar)
     html += this.renderMergeSection();
-
-    // Sync section
-    html += this.renderSyncSection();
 
     html += `
       <div class="settings-sticky-bar">
