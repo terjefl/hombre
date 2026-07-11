@@ -16,6 +16,8 @@ log = logging.getLogger("hombre")
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 HONCHO_ENV_PATH = os.environ.get("HONCHO_ENV_PATH", "")
 HONCHO_COMPOSE_DIR = os.environ.get("HONCHO_COMPOSE_DIR", "")
 
@@ -516,3 +518,100 @@ async def update_users(req: DashboardUsersRequest, request: Request):
 
     _audit("settings.users.write", user=user, detail=f"users={[u.username for u in req.users]}")
     return {"status": "ok", "count": len(req.users)}
+
+
+# ─── Sync Router ──────────────────────────────────────────────────────────
+
+sync_router = APIRouter(prefix="/api/sync", tags=["sync"])
+
+
+def _get_honcho_client():
+    """Get the httpx client from the running app module."""
+    import sys
+
+    for key in ("app", "__main__"):
+        mod = sys.modules.get(key)
+        if mod is not None and getattr(mod, "_client", None) is not None:
+            return mod._client
+    return None
+
+
+async def _honcho_request(method: str, path: str, body=None):
+    """Make a request to the Honcho API through the app's httpx client."""
+    client = _get_honcho_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="honcho_client_not_ready")
+
+    import httpx as _httpx
+    try:
+        if method == "GET":
+            resp = await client.get(path)
+        elif method == "POST":
+            resp = await client.post(path, json=body or {})
+        else:
+            raise HTTPException(status_code=400, detail=f"unsupported_method: {method}")
+
+        if resp.status_code >= 400:
+            detail = ""
+            try:
+                resp_json = resp.json()
+                if isinstance(resp_json, dict) and "detail" in resp_json:
+                    detail = resp_json["detail"]
+                else:
+                    detail = resp_json
+            except Exception:
+                detail = resp.text
+            log.warning("Honcho API error %d on %s %s: %s", resp.status_code, method, path, detail)
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+
+        try:
+            return resp.json()
+        except Exception:
+            return resp.text
+
+    except _httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="honcho_unreachable")
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("Honcho request failed: %s %s %s — %s", method, path, body, e)
+        raise HTTPException(status_code=502, detail="honcho_proxy_error")
+
+
+class SyncTriggerRequest(BaseModel):
+    workspace_id: str
+
+
+@sync_router.post("/trigger")
+async def trigger_sync(req: SyncTriggerRequest, request: Request):
+    """Trigger a manual sync (schedule_dream) for the specified workspace."""
+    if not VALID_ID.match(req.workspace_id):
+        raise HTTPException(status_code=400, detail="invalid_workspace_id")
+
+    user = _get_user(request)
+    _audit("sync.trigger", user=user, detail=f"workspace={req.workspace_id}")
+
+    log.info("Triggering manual sync for workspace %s", req.workspace_id)
+    try:
+        result = await _honcho_request("POST", f"/v3/workspaces/{req.workspace_id}/schedule_dream")
+        return {"status": "sync_triggered", "workspace_id": req.workspace_id, "result": result}
+    except HTTPException as e:
+        log.warning("Sync trigger failed for %s: %s", req.workspace_id, e.detail)
+        raise HTTPException(status_code=502, detail=f"sync_trigger_failed: {e.detail}")
+
+
+@sync_router.get("/status/{wid}")
+async def sync_status(wid: str, request: Request):
+    """Get queue status for a workspace (proxies to Honcho queue_status)."""
+    if not VALID_ID.match(wid):
+        raise HTTPException(status_code=400, detail="invalid_workspace_id")
+
+    user = _get_user(request)
+    _audit("sync.status", user=user, detail=f"workspace={wid}")
+
+    try:
+        result = await _honcho_request("GET", f"/v3/workspaces/{wid}/queue_status")
+        return result
+    except HTTPException as e:
+        log.warning("Sync status failed for %s: %s", wid, e.detail)
+        raise HTTPException(status_code=502, detail=f"sync_status_failed: {e.detail}")

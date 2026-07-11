@@ -6,9 +6,11 @@ to a portable JSON format, and import from that format into a workspace.
 """
 
 import json
+import os
 import re
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -25,6 +27,8 @@ EXPORT_VERSION = "1.0"
 # to avoid circular imports; update both if the pattern changes.
 VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 MAX_IMPORT_SIZE = 10 * 1024 * 1024  # 10MB limit for import files
+
+TRASH_DIR = Path(os.environ.get("HOMBRE_DATA_DIR", "data")) / "trash"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -147,6 +151,27 @@ def _strip_internal_fields(items: list[dict]) -> list[dict]:
     for item in items:
         cleaned.append({k: v for k, v in item.items() if not k.startswith("_")})
     return cleaned
+
+
+# ─── Trash Helpers ────────────────────────────────────────────────────────
+
+
+def _load_trash() -> dict:
+    """Load trashed conclusions from disk."""
+    trash_file = TRASH_DIR / "conclusions.json"
+    if not trash_file.exists():
+        return {"conclusions": []}
+    try:
+        return json.loads(trash_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {"conclusions": []}
+
+
+def _save_trash(data: dict) -> None:
+    """Persist trashed conclusions to disk."""
+    TRASH_DIR.mkdir(parents=True, exist_ok=True)
+    trash_file = TRASH_DIR / "conclusions.json"
+    trash_file.write_text(json.dumps(data, indent=2))
 
 
 # ─── Export Endpoints ─────────────────────────────────────────────────────
@@ -545,18 +570,48 @@ async def merge_workspaces(req: MergeRequest):
 
 @workspace_router.delete("/{wid}/conclusions/{cid}")
 async def delete_conclusion(wid: str, cid: str):
-    """Delete a conclusion from Honcho permanently.
+    """Move a conclusion to trash and delete from Honcho.
 
-    Proxies DELETE /v3/workspaces/{wid}/conclusions/{cid}.
-    This actually removes the conclusion from Honcho — not a soft-delete.
+    Saves the conclusion data to a local trash file before removing it
+    from Honcho, allowing recovery via the trash/restore endpoint.
     """
     if not VALID_ID.match(wid):
         raise HTTPException(status_code=400, detail="invalid_workspace_id")
     if not VALID_ID.match(cid):
         raise HTTPException(status_code=400, detail="invalid_conclusion_id")
 
-    log.info("Deleting conclusion %s from workspace %s", cid, wid)
-    result = await _honcho_request("DELETE", f"/v3/workspaces/{wid}/conclusions/{cid}")
+    log.info("Moving conclusion %s to trash and deleting from workspace %s", cid, wid)
+
+    # Try to fetch the full conclusion data before deleting
+    conclusion_data = {"id": cid}
+    try:
+        result = await _honcho_request("GET", f"/v3/workspaces/{wid}/conclusions/{cid}")
+        if isinstance(result, dict):
+            conclusion_data = result
+    except HTTPException:
+        # Fallback: try list endpoint to find the conclusion
+        try:
+            result = await _honcho_request("POST", f"/v3/workspaces/{wid}/conclusions/list", {
+                "filters": {"observer_id": cid}
+            })
+            items = result.get("items", []) if isinstance(result, dict) else []
+            match = next((c for c in items if c.get("id") == cid), None)
+            if match:
+                conclusion_data = match
+        except HTTPException:
+            pass
+
+    # Save to trash before deleting from Honcho
+    trash = _load_trash()
+    trash["conclusions"].append({
+        "workspace_id": wid,
+        "conclusion": conclusion_data,
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _save_trash(trash)
+
+    # Delete from Honcho
+    await _honcho_request("DELETE", f"/v3/workspaces/{wid}/conclusions/{cid}")
     return {"status": "deleted", "workspace_id": wid, "conclusion_id": cid}
 
 
@@ -596,6 +651,75 @@ async def workspace_proxy_post(path: str, body: dict | None = None):
     """Catch-all POST proxy so workspace_router doesn't block list/create requests."""
     full_path = f"/v3/workspaces/{path}" if path else "/v3/workspaces/list"
     return await _honcho_request("POST", full_path, body or {})
+
+
+# ─── Trash Endpoints ──────────────────────────────────────────────────────
+
+trash_router = APIRouter(prefix="/api/trash", tags=["trash"])
+
+
+@trash_router.get("/conclusions")
+async def list_trashed_conclusions():
+    """List all conclusions currently in trash."""
+    return _load_trash()
+
+
+@trash_router.post("/conclusions/{cid}/restore")
+async def restore_trashed_conclusion(cid: str):
+    """Restore a trashed conclusion back to Honcho.
+
+    Posts the conclusion data back via POST /v3/workspaces/{wid}/conclusions,
+    then removes it from the local trash file.
+    """
+    if not VALID_ID.match(cid):
+        raise HTTPException(status_code=400, detail="invalid_conclusion_id")
+
+    trash = _load_trash()
+    idx = next(
+        (i for i, item in enumerate(trash["conclusions"]) if item["conclusion"].get("id") == cid),
+        None,
+    )
+    if idx is None:
+        raise HTTPException(status_code=404, detail="conclusion_not_found_in_trash")
+
+    item = trash["conclusions"][idx]
+    wid = item["workspace_id"]
+    conclusion = item["conclusion"]
+
+    if not VALID_ID.match(wid):
+        raise HTTPException(status_code=400, detail="invalid_workspace_id")
+
+    log.info("Restoring conclusion %s to workspace %s", cid, wid)
+
+    # Post back to Honcho
+    await _honcho_request("POST", f"/v3/workspaces/{wid}/conclusions", conclusion)
+
+    # Remove from trash
+    trash["conclusions"].pop(idx)
+    _save_trash(trash)
+
+    return {"status": "restored", "conclusion_id": cid, "workspace_id": wid}
+
+
+@trash_router.delete("/conclusions/{cid}")
+async def permanent_delete_from_trash(cid: str):
+    """Permanently delete a conclusion from the trash file."""
+    if not VALID_ID.match(cid):
+        raise HTTPException(status_code=400, detail="invalid_conclusion_id")
+
+    trash = _load_trash()
+    idx = next(
+        (i for i, item in enumerate(trash["conclusions"]) if item["conclusion"].get("id") == cid),
+        None,
+    )
+    if idx is None:
+        raise HTTPException(status_code=404, detail="conclusion_not_found_in_trash")
+
+    log.info("Permanently deleting conclusion %s from trash", cid)
+    trash["conclusions"].pop(idx)
+    _save_trash(trash)
+
+    return {"status": "permanently_deleted", "conclusion_id": cid}
 
 
 @router.post("/import/workspace")

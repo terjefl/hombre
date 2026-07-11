@@ -13,9 +13,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from routes.settings import router as settings_router
+from routes.settings import sync_router as sync_router
 from routes.deletes import router as deletes_router
 from routes.export import router as export_router
 from routes.export import workspace_router as workspace_router
+from routes.export import trash_router as trash_router
 from routes.security import (
     RateLimitMiddleware,
     RequestLoggingMiddleware,
@@ -97,8 +99,10 @@ async def health():
 
 
 app.include_router(settings_router)
+app.include_router(sync_router)
 app.include_router(deletes_router)
 app.include_router(export_router)
+app.include_router(trash_router)
 app.include_router(workspace_router)
 
 

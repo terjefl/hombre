@@ -53,11 +53,22 @@ const App = {
       else if (action === 'delete-message') MessagesTab.deleteItem(id, btn);
       else if (action === 'delete-peer') PeersTab.deletePeer(id, btn);
       else if (action === 'compare-peers') PeersTab.openCompare();
+      else if (action === 'view-trash') ConclusionsTab.viewTrash();
+      else if (action === 'restore-conclusion') ConclusionsTab.restoreItem(id);
+      else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
+      else if (action === 'sync-trigger') SettingsTab.triggerSync();
+      else if (action === 'sync-refresh') SettingsTab.refreshSyncStatus();
     });
 
     document.getElementById('modal-root').addEventListener('click', (e) => {
       const overlay = e.target.closest('.modal-overlay');
-      if (e.target === overlay) Modal.close();
+      if (e.target === overlay) { Modal.close(); return; }
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'restore-conclusion') ConclusionsTab.restoreItem(id);
+      else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
     });
 
     document.querySelector('.sidebar-footer').addEventListener('click', (e) => {
@@ -1436,8 +1447,13 @@ const ConclusionsTab = {
     this.resetState();
     el.innerHTML = `
       <div class="tab-header">
-        <h2>Conclusions</h2>
-        <p>Reasoning and memories extracted by Honcho</p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h2>Conclusions</h2>
+            <p>Reasoning and memories extracted by Honcho</p>
+          </div>
+          <button class="btn btn-ghost" data-action="view-trash">View Trash</button>
+        </div>
       </div>
       <div class="search-bar">
         <select class="input" id="conclusion-peer" style="max-width:250px" aria-label="Select peer">
@@ -1668,7 +1684,82 @@ const ConclusionsTab = {
     if (lower.startsWith('always ') || lower.startsWith('never ') || lower.includes('prefers ')) return 'explicit';
     if (lower.includes('therefore') || lower.includes('because') || lower.includes('likely ') || lower.includes('must ')) return 'deductive';
     return 'inductive';
-  }
+  },
+
+  async viewTrash() {
+    try {
+      const data = await App.api('trash/conclusions');
+      const items = data.conclusions || [];
+
+      if (items.length === 0) {
+        const body = document.createElement('div');
+        body.innerHTML = `
+          <div class="empty-state" style="padding:32px 0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:32px;height:32px"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <h3>Trash is empty</h3>
+            <p>No deleted conclusions</p>
+          </div>`;
+        Modal.show('Trashed Conclusions', [body], () => Modal.close(), { confirmText: 'Close', confirmClass: 'btn btn-ghost' });
+        return;
+      }
+
+      const container = document.createElement('div');
+      container.className = 'trash-list';
+      container.innerHTML = items.map(item => {
+        const c = item.conclusion || {};
+        const cid = c.id || 'unknown';
+        const content = (c.content || '(no content)').substring(0, 200);
+        const wid = item.workspace_id || '?';
+        const deletedAt = item.deleted_at ? App.formatDateTime(item.deleted_at) : '—';
+        const type = this.guessType(c.content);
+        const isTruncated = content.length < (c.content || '').length;
+        return `
+          <div class="trash-item" data-trash-cid="${App.escapeAttr(cid)}">
+            <div class="trash-item-meta">
+              <span class="conclusion-type ${type}"><span class="dot"></span> ${type}</span>
+              <span class="text-xs text-muted">from <code>${App.escapeHtml(wid)}</code></span>
+              <span class="text-xs text-muted">${deletedAt}</span>
+            </div>
+            <div class="trash-item-content">${App.escapeHtml(content)}${isTruncated ? '...' : ''}</div>
+            <div class="trash-item-actions">
+              <button class="btn btn-restore btn-sm" data-action="restore-conclusion" data-id="${App.escapeAttr(cid)}">Restore</button>
+              <button class="btn btn-danger-ghost btn-sm" data-action="permanent-delete-conclusion" data-id="${App.escapeAttr(cid)}">Delete Forever</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      Modal.show('Trashed Conclusions', [container], () => Modal.close(), { confirmText: 'Close', confirmClass: 'btn btn-ghost' });
+    } catch (e) {
+      App.toast(`Failed to load trash: ${e.message}`, 'error');
+    }
+  },
+
+  async restoreItem(id) {
+    try {
+      await App.api(`trash/conclusions/${encodeURIComponent(id)}/restore`, { method: 'POST' });
+      App.toast('Conclusion restored', 'success');
+      // Re-render the trash modal
+      Modal.close();
+      this.viewTrash();
+    } catch (e) {
+      App.toast(`Restore failed: ${e.message}`, 'error');
+    }
+  },
+
+  async permanentDeleteItem(id) {
+    Modal.confirm('Delete Forever', `Permanently delete this conclusion from trash? This cannot be undone.`, async () => {
+      try {
+        await App.api(`trash/conclusions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        App.toast('Conclusion permanently deleted', 'success');
+        Modal.close();
+        // Re-render the trash modal
+        this.viewTrash();
+      } catch (e) {
+        App.toast(`Delete failed: ${e.message}`, 'error');
+      }
+    });
+  },
 };
 
 /* ─── Messages Tab ─── */
@@ -1842,6 +1933,7 @@ const SettingsTab = {
   original: {},
   users: [],
   usersDirty: false,
+  _syncTimer: null,
   mergeState: {
     sourceWorkspace: '',
     targetWorkspace: '',
@@ -1851,6 +1943,12 @@ const SettingsTab = {
   },
 
   async render(el) {
+    // Clear any existing sync timer
+    if (this._syncTimer) {
+      clearInterval(this._syncTimer);
+      this._syncTimer = null;
+    }
+
     el.innerHTML = `
       <div class="tab-header">
         <h2>Settings</h2>
@@ -1933,6 +2031,12 @@ const SettingsTab = {
       if (sbUrl) sbUrl.value = this._supabaseData.SUPABASE_URL || '';
       if (sbKey) sbKey.value = this._supabaseData.SUPABASE_KEY || '';
       if (sbServiceKey) sbServiceKey.value = this._supabaseData.SUPABASE_SERVICE_KEY || '';
+
+      // Start auto-refresh for sync status
+      this._syncTimer = setInterval(() => {
+        const syncDisplay = document.getElementById('sync-status-display');
+        if (syncDisplay) this.refreshSyncStatus();
+      }, 30000);
     } catch (e) {
       el.innerHTML = `
         <div class="tab-header"><h2>Settings</h2><p>Configure dashboard access and Honcho server models</p></div>
@@ -2012,6 +2116,9 @@ const SettingsTab = {
 
     // Workspace Merge section (between advanced and sticky bar)
     html += this.renderMergeSection();
+
+    // Sync section
+    html += this.renderSyncSection();
 
     html += `
       <div class="settings-sticky-bar">
@@ -2940,7 +3047,127 @@ const SettingsTab = {
     } catch (e) {
       App.toast(`Failed to load backups: ${e.message}`, 'error');
     }
-  }
+  },
+
+  renderSyncSection() {
+    return `
+      <div class="accordion" data-section="sync">
+        <div class="accordion-header" data-action="toggle-accordion">
+          <div class="flex items-center gap-2">
+            <span>🔄 Sync</span>
+          </div>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="accordion-body">
+          <div class="accordion-content">
+            <div class="text-xs text-muted mb-2">Manually trigger a sync to Honcho and monitor queue status.</div>
+            <div class="flex gap-2 mb-3">
+              <button class="btn btn-primary" data-action="sync-trigger" id="sync-trigger-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
+                Sync Now
+              </button>
+              <button class="btn btn-ghost" data-action="sync-refresh" id="sync-refresh-btn">Refresh Status</button>
+            </div>
+            <div id="sync-status-display">
+              <div class="sync-status-empty text-sm text-muted" style="padding:12px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius-sm)">
+                Click "Refresh Status" to check queue status
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  async triggerSync() {
+    const ws = App.state.workspace;
+    if (!ws) {
+      App.toast('No workspace selected', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById('sync-trigger-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:1.5px"></div> Syncing...';
+    }
+
+    try {
+      await App.api('sync/trigger', { body: { workspace_id: ws.id } });
+      App.toast('Sync triggered successfully', 'success');
+      // Auto-refresh status after a short delay
+      setTimeout(() => this.refreshSyncStatus(), 2000);
+    } catch (e) {
+      App.toast(`Sync failed: ${e.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg> Sync Now';
+      }
+    }
+  },
+
+  async refreshSyncStatus() {
+    const ws = App.state.workspace;
+    if (!ws) return;
+
+    const display = document.getElementById('sync-status-display');
+    if (!display) return;
+
+    display.innerHTML = '<div class="loading-overlay" style="padding:24px 0"><div class="spinner"></div> Loading status...</div>';
+
+    const refreshBtn = document.getElementById('sync-refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:1.5px"></div> Refreshing...';
+    }
+
+    try {
+      const data = await App.api(`sync/status/${ws.id}`, { method: 'GET' });
+
+      const lastSync = data.last_sync || data.last_dream || null;
+      const representationPending = data.representation_tasks_pending ?? data.deriver_pending ?? '—';
+      const summaryPending = data.summary_tasks_pending ?? '—';
+      const dreamPending = data.dream_tasks_pending ?? '—';
+
+      const formatPending = (val) => {
+        if (val === '—' || val === null || val === undefined) return '<span class="text-muted">—</span>';
+        const num = parseInt(val, 10);
+        if (isNaN(num)) return `<span class="text-muted">${App.escapeHtml(String(val))}</span>`;
+        if (num === 0) return '<span class="sync-pending-0">0</span>';
+        if (num > 0) return `<span class="sync-pending-active">${num}</span>`;
+        return `<span>${num}</span>`;
+      };
+
+      display.innerHTML = `
+        <div class="sync-status-grid">
+          <div class="sync-status-item sync-full-width">
+            <span class="sync-label">Last Sync</span>
+            <span class="sync-value">${lastSync ? App.formatDateTime(lastSync) : '<span class="text-muted">Never</span>'}</span>
+          </div>
+          <div class="sync-status-item">
+            <span class="sync-label">Representation</span>
+            <span class="sync-value">${formatPending(representationPending)}</span>
+          </div>
+          <div class="sync-status-item">
+            <span class="sync-label">Summary</span>
+            <span class="sync-value">${formatPending(summaryPending)}</span>
+          </div>
+          <div class="sync-status-item">
+            <span class="sync-label">Dream</span>
+            <span class="sync-value">${formatPending(dreamPending)}</span>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      display.innerHTML = `<div class="text-sm" style="color:var(--destructive);padding:12px;text-align:center">Failed to load status: ${App.escapeHtml(e.message)}</div>`;
+    } finally {
+      if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh Status';
+      }
+    }
+  },
 };
 
 document.addEventListener('DOMContentLoaded', () => App.init());

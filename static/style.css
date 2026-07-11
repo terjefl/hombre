@@ -1185,3 +1185,125 @@ tr:hover .btn-delete-inline {
 .status-dot-gray {
   background: var(--text-dim);
 }
+
+/* ─── Sync Status Grid ─── */
+.sync-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sync-status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition);
+}
+
+.sync-status-item:hover {
+  border-color: var(--border-accent);
+}
+
+.sync-status-item .sync-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sync-status-item .sync-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sync-status-item.sync-full-width {
+  grid-column: 1 / -1;
+}
+
+.sync-pending-0 {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.sync-pending-active {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .sync-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Trash Modal ─── */
+.trash-list {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trash-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  transition: border-color var(--transition);
+}
+
+.trash-item:hover {
+  border-color: var(--border-accent);
+}
+
+.trash-item-content {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.trash-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.trash-item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-restore {
+  background: transparent;
+  color: var(--green);
+  border: 1px solid rgba(134, 239, 172, 0.25);
+}
+
+.btn-restore:hover {
+  background: var(--green-bg);
+  border-color: rgba(134, 239, 172, 0.4);
+}
+
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--destructive);
+  border: 1px solid rgba(223, 95, 121, 0.25);
+}
+
+.btn-danger-ghost:hover {
+  background: rgba(223, 95, 121, 0.12);
+  border-color: rgba(223, 95, 121, 0.4);
+}
