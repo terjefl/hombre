@@ -105,9 +105,9 @@ Dashboard runs at `http://localhost:5000`.
 
 Best for: production deployments, consistent environments, zero dependency conflicts, and easy updates.
 
-The deployment folder at `~/docker/hombre/` contains only deployment files (`docker-compose.yml`, `.env`, `.env.example`, `.gitignore`, and `LICENSE`). No source code lives there.
+Your deployment folder contains only deployment files (`docker-compose.yml`, `.env`, `.env.example`, `.gitignore`, and `LICENSE`). No source code lives there.
 
-The Docker image is built from the dev repo (`~/brandx/hombre/`) and pushed to `ghcr.io/lovethatbrandx/hombre/hombre:latest`.
+The Docker image is built from the development repo and pushed to `ghcr.io/lovethatbrandx/hombre/hombre:latest`.
 
 **Why Docker is preferred for production:**
 - **Container isolation** — won't conflict with other Python versions or system packages
@@ -116,7 +116,7 @@ The Docker image is built from the dev repo (`~/brandx/hombre/`) and pushed to `
 - **Volume mounts** — Honcho config and backups persist across container rebuilds
 - **Consistent updates** — `docker compose pull && docker compose up -d` to update
 
-Edit the environment variables in your `~/docker/hombre/.env` file to match your setup:
+Edit the environment variables in your `.env` file to match your setup:
 
 ```yaml
 services:
@@ -142,14 +142,14 @@ services:
 Then run:
 
 ```bash
-cd ~/docker/hombre
+cd your/deploy/folder/
 docker compose up -d
 ```
 
 To update:
 
 ```bash
-cd ~/docker/hombre
+cd your/deploy/folder/
 docker compose pull
 docker compose up -d
 ```
