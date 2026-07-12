@@ -87,15 +87,18 @@ app.add_middleware(RoleBasedAuthMiddleware)
 
 @app.get("/api/health")
 async def health():
-    try:
-        r = await _client.get("/health")
-        return r.json()
-    except httpx.ConnectError:
-        log.warning("Honcho server unreachable")
-        return {"status": "error", "reason": "upstream_unreachable"}
-    except Exception as e:
-        log.error("Health check failed: %s", e)
-        return {"status": "error", "reason": "unknown"}
+    """Lightweight health check — must NOT depend on Honcho.
+
+    The Docker health check hits this endpoint with a short timeout (5 s).
+    Calling Honcho here would make the container appear unhealthy any time
+    the upstream is slow, even though Hombre itself is fine.
+    """
+    if _client is None:
+        return JSONResponse(
+            {"status": "error", "reason": "client_not_ready"},
+            status_code=503,
+        )
+    return {"status": "ok"}
 
 
 app.include_router(settings_router)

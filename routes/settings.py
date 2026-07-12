@@ -569,8 +569,15 @@ async def _honcho_request(method: str, path: str, body=None):
         except Exception:
             return resp.text
 
-    except _httpx.ConnectError:
+    except _httpx.ConnectError as e:
+        log.error("Honcho unreachable during %s %s: %s", method, path, e)
         raise HTTPException(status_code=502, detail="honcho_unreachable")
+    except _httpx.TimeoutException as e:
+        log.error("Honcho timeout on %s %s: %s", method, path, e)
+        raise HTTPException(status_code=504, detail="honcho_timeout")
+    except _httpx.TransportError as e:
+        log.error("Honcho transport error on %s %s: %s", method, path, e)
+        raise HTTPException(status_code=502, detail=f"honcho_transport_error: {e}")
     except HTTPException:
         raise
     except Exception as e:

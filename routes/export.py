@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 log = logging.getLogger("hombre")
@@ -119,9 +119,15 @@ async def _honcho_request(method: str, path: str, body: Any = None) -> Any:
         except Exception:
             return resp.text
 
-    except httpx.ConnectError:
-        log.error("Honcho unreachable during export/import")
+    except httpx.ConnectError as e:
+        log.error("Honcho unreachable during %s %s: %s", method, path, e)
         raise HTTPException(status_code=502, detail="honcho_unreachable")
+    except httpx.TimeoutException as e:
+        log.error("Honcho timeout on %s %s: %s", method, path, e)
+        raise HTTPException(status_code=504, detail="honcho_timeout")
+    except httpx.TransportError as e:
+        log.error("Honcho transport error on %s %s: %s", method, path, e)
+        raise HTTPException(status_code=502, detail=f"honcho_transport_error: {e}")
     except HTTPException:
         raise
     except Exception as e:
@@ -647,10 +653,14 @@ async def workspace_proxy_get(path: str):
 
 
 @workspace_router.post("/{path:path}")
-async def workspace_proxy_post(path: str, body: dict | None = None):
+async def workspace_proxy_post(request: Request, path: str):
     """Catch-all POST proxy so workspace_router doesn't block list/create requests."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     full_path = f"/v3/workspaces/{path}" if path else "/v3/workspaces/list"
-    return await _honcho_request("POST", full_path, body or {})
+    return await _honcho_request("POST", full_path, body)
 
 
 # ─── Trash Endpoints ──────────────────────────────────────────────────────
