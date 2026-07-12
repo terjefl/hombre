@@ -363,10 +363,11 @@ class RoleBasedAuthMiddleware(BaseHTTPMiddleware):
         return required in permissions
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Skip health, static, and index
+        # Skip health, static, auth status, and index
         if (
             request.url.path.startswith("/static")
             or request.url.path == "/api/health"
+            or request.url.path == "/api/auth/status"
             or request.url.path == "/"
         ):
             return await call_next(request)
@@ -427,11 +428,11 @@ class EnhancedSecurityHeadersMiddleware(BaseHTTPMiddleware):
         if proto == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
-        # CSP - allow inline styles for modals, self for everything else
+        # CSP - allow inline styles for modals, Google Fonts for stylesheet + font assets
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
             "font-src 'self' fonts.googleapis.com fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
@@ -468,10 +469,11 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
         if not supabase_configured():
             return await call_next(request)
 
-        # Skip health, static, and index
+        # Skip health, static, auth status, and index
         if (
             request.url.path.startswith("/static")
             or request.url.path == "/api/health"
+            or request.url.path == "/api/auth/status"
             or request.url.path == "/"
         ):
             return await call_next(request)

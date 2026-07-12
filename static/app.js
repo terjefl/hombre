@@ -13,12 +13,13 @@ const App = {
     this.bindNav();
     this.bindEventDelegation();
     this.bindWorkspaceSelect();
+    // Init sync indicator immediately — don't wait for auth
+    this.initSyncIndicator();
     await this.checkSupabaseAuth();
     await this.checkHealth();
     await this.loadWorkspaces();
     await this.loadPeersAndSessions();
     this.renderTab('overview');
-    this.initSyncIndicator();
   },
 
   bindNav() {
@@ -133,9 +134,14 @@ const App = {
   async checkSupabaseAuth() {
     try {
       const r = await fetch('/api/auth/status');
-      const d = await r.json();
-      this.state.supabaseConfigured = d.configured || false;
-      this.state.user = d.user || null;
+      if (!r.ok) {
+        this.state.supabaseConfigured = false;
+        this.state.user = null;
+      } else {
+        const d = await r.json();
+        this.state.supabaseConfigured = d.configured || false;
+        this.state.user = d.user || null;
+      }
     } catch {
       this.state.supabaseConfigured = false;
       this.state.user = null;

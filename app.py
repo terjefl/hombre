@@ -110,6 +110,20 @@ app.include_router(trash_router)
 app.include_router(workspace_router)
 
 
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    """Check if Supabase auth is configured and return current user.
+
+    This is a Hombre-local endpoint (not proxied to Honcho).
+    Must be accessible without authentication so the frontend can
+    determine auth configuration during initialization.
+    """
+    from routes.security import _users_cache
+    configured = supabase_configured() or bool(_users_cache)
+    user = getattr(request.state, "user", None) or None
+    return {"configured": configured, "user": user}
+
+
 @app.post("/api/workspaces/{wid}/peers/{pid}/chat")
 async def chat_stream(wid: str, pid: str, request: Request):
     if not VALID_ID.match(wid) or not VALID_ID.match(pid):
