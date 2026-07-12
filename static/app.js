@@ -392,20 +392,57 @@ const App = {
 
   /* ─── Sync Indicator (Sidebar) ─── */
   _syncIndicatorTimer: null,
+  _syncIndicatorTickTimer: null,
+  _syncIndicatorLastUpdate: null,
+  _syncIndicatorPrevPending: null,
+  _syncIndicatorInFlight: false,
 
   initSyncIndicator() {
+    // Tear down any prior instance — safe to call multiple times
+    if (this._syncIndicatorTimer) {
+      clearInterval(this._syncIndicatorTimer);
+      this._syncIndicatorTimer = null;
+    }
+    if (this._syncIndicatorTickTimer) {
+      clearInterval(this._syncIndicatorTickTimer);
+      this._syncIndicatorTickTimer = null;
+    }
+    const existing = document.getElementById('sidebar-sync-indicator');
+    if (existing) existing.remove();
+
     const indicator = document.createElement('div');
     indicator.id = 'sidebar-sync-indicator';
     indicator.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">
-        <span id="sidebar-conn-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0"></span>
-        <span id="sidebar-conn-text" style="color:var(--text-dim)">Checking...</span>
+      <div class="sidebar-sync-row">
+        <span id="sidebar-conn-dot" class="sidebar-sync-dot"></span>
+        <span id="sidebar-conn-text" class="sidebar-sync-row-text">Checking...</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">
-        <span id="sidebar-sync-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-dim);flex-shrink:0"></span>
-        <span id="sidebar-sync-text" style="color:var(--text-dim)">Checking sync...</span>
+      <div class="sidebar-sync-row">
+        <span id="sidebar-sync-dot" class="sidebar-sync-dot"></span>
+        <span id="sidebar-sync-text" class="sidebar-sync-row-text">Checking sync...</span>
       </div>
-      <div id="sidebar-sync-details" style="font-size:11px;color:var(--text-dim)"></div>
+      <div class="sidebar-sync-progress-wrap">
+        <div class="sidebar-sync-progress-track">
+          <div id="sidebar-sync-progress-fill" class="sidebar-sync-progress-fill"></div>
+        </div>
+        <div class="sidebar-sync-progress-meta">
+          <span id="sidebar-sync-progress-pct" class="sidebar-sync-progress-pct">0%</span>
+          <span id="sidebar-sync-progress-counts" class="sidebar-sync-progress-counts">— pending</span>
+        </div>
+      </div>
+      <div class="sidebar-sync-footer">
+        <span id="sidebar-sync-updated" class="sidebar-sync-updated">Updating…</span>
+        <button id="sidebar-sync-refresh-btn" class="btn btn-ghost btn-sm sidebar-sync-refresh-btn" data-action="sync-refresh" title="Refresh sync status" aria-label="Refresh sync status">
+          <svg class="sidebar-sync-refresh-icon" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+      <div id="sidebar-sync-actions" class="sidebar-sync-actions">
+        <button class="btn btn-ghost btn-sm w-full" data-action="sync-trigger" style="font-size:11px;padding:4px 8px">Sync Now</button>
+      </div>
     `;
 
     const footer = document.querySelector('.sidebar-footer');
@@ -414,96 +451,179 @@ const App = {
     // Event delegation for sync actions
     indicator.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
-      if (!btn) return;
+      if (!btn || btn.disabled) return;
       const action = btn.dataset.action;
       if (action === 'sync-trigger') SettingsTab.triggerSync();
       else if (action === 'sync-refresh') this.refreshSyncIndicator();
     });
 
+    // Reset state
+    this._syncIndicatorLastUpdate = null;
+    this._syncIndicatorPrevPending = null;
+    this._syncIndicatorInFlight = false;
+
+    // Initial fetch (so the user sees something change immediately)
     this.refreshSyncIndicator();
+
+    // Periodic full refresh — fetches latest from the server every 30s
     this._syncIndicatorTimer = setInterval(() => this.refreshSyncIndicator(), 30000);
+
+    // 1s UI tick — keeps the "X seconds ago" label alive so the user can
+    // see at a glance that the indicator is doing something, even between
+    // network refreshes.
+    this._syncIndicatorTickTimer = setInterval(() => this._tickSyncIndicator(), 1000);
+  },
+
+  _tickSyncIndicator() {
+    const el = document.getElementById('sidebar-sync-updated');
+    if (!el) return;
+    if (!this._syncIndicatorLastUpdate) {
+      el.textContent = 'Updating…';
+      el.classList.add('is-stale');
+      return;
+    }
+    const ageSec = Math.floor((Date.now() - this._syncIndicatorLastUpdate) / 1000);
+    let label;
+    if (ageSec < 5) label = 'just now';
+    else if (ageSec < 60) label = `${ageSec}s ago`;
+    else label = `${Math.floor(ageSec / 60)}m ago`;
+    el.textContent = `Updated ${label}`;
+    el.classList.toggle('is-stale', ageSec > 60);
   },
 
   async refreshSyncIndicator() {
     const ws = this.state.workspace;
+    const indicator = document.getElementById('sidebar-sync-indicator');
     const connDot = document.getElementById('sidebar-conn-dot');
     const connText = document.getElementById('sidebar-conn-text');
     const syncDot = document.getElementById('sidebar-sync-dot');
     const syncText = document.getElementById('sidebar-sync-text');
-    const details = document.getElementById('sidebar-sync-details');
+    const progressFill = document.getElementById('sidebar-sync-progress-fill');
+    const progressPct = document.getElementById('sidebar-sync-progress-pct');
+    const progressCounts = document.getElementById('sidebar-sync-progress-counts');
+    const refreshBtn = document.getElementById('sidebar-sync-refresh-btn');
     if (!connDot || !syncDot) return;
 
-    if (!ws) {
-      connDot.style.background = 'var(--text-dim)';
-      connText.textContent = 'No workspace';
-      syncDot.style.background = 'var(--text-dim)';
-      syncText.textContent = 'No workspace';
-      if (details) details.innerHTML = '';
-      return;
-    }
+    // Prevent overlapping requests
+    if (this._syncIndicatorInFlight) return;
+    this._syncIndicatorInFlight = true;
 
-    // Row 1: Check Honcho health (connection status)
-    let connected = false;
-    try {
-      const hr = await fetch('/api/health');
-      const hd = await hr.json();
-      connected = hd.status === 'ok';
-    } catch {
-      connected = false;
-    }
-
-    if (connected) {
-      connDot.style.background = 'var(--green)';
-      connText.textContent = 'Connected';
-    } else {
-      connDot.style.background = 'var(--destructive)';
-      connText.textContent = 'Unreachable';
-    }
-
-    // Row 2: Check sync queue status
-    if (!connected) {
-      syncDot.style.background = 'var(--text-dim)';
-      syncText.textContent = 'Offline';
-      if (details) details.innerHTML = `
-        <div style="color:var(--destructive);margin-bottom:6px">Honcho unreachable</div>
-        <button class="btn btn-ghost btn-sm w-full" data-action="sync-trigger" style="font-size:11px;padding:4px 8px">Sync Now</button>
-      `;
-      return;
-    }
+    // Loading state — gives the user immediate feedback that work is happening
+    if (refreshBtn) refreshBtn.classList.add('is-loading');
+    if (indicator) indicator.classList.add('is-loading');
 
     try {
+      if (!ws) {
+        connDot.style.background = 'var(--text-dim)';
+        connText.textContent = 'No workspace';
+        syncDot.style.background = 'var(--text-dim)';
+        syncText.textContent = 'No workspace';
+        if (progressFill) {
+          progressFill.style.width = '0%';
+          progressFill.classList.remove('is-amber', 'is-green');
+        }
+        if (progressPct) progressPct.textContent = '—';
+        if (progressCounts) progressCounts.textContent = 'Select a workspace to begin';
+        this._syncIndicatorLastUpdate = Date.now();
+        return;
+      }
+
+      // Row 1: Check Honcho health (connection status)
+      let connected = false;
+      try {
+        const hr = await fetch('/api/health');
+        const hd = await hr.json();
+        connected = hd.status === 'ok';
+      } catch {
+        connected = false;
+      }
+
+      if (connected) {
+        connDot.style.background = 'var(--green)';
+        connText.textContent = 'Connected';
+      } else {
+        connDot.style.background = 'var(--destructive)';
+        connText.textContent = 'Unreachable';
+      }
+
+      // Row 2: Check sync queue status
+      if (!connected) {
+        syncDot.style.background = 'var(--text-dim)';
+        syncText.textContent = 'Offline';
+        if (progressFill) {
+          progressFill.style.width = '0%';
+          progressFill.classList.remove('is-amber', 'is-green');
+        }
+        if (progressPct) progressPct.textContent = '—';
+        if (progressCounts) progressCounts.textContent = 'Backend unreachable';
+        return;
+      }
+
       const data = await this.api(`sync/status/${ws.id}`, { method: 'GET' });
       const totalPending = parseInt(data.pending_work_units ?? 0, 10) || 0;
       const totalCompleted = parseInt(data.completed_work_units ?? 0, 10) || 0;
       const totalWork = parseInt(data.total_work_units ?? 0, 10) || 0;
 
+      // Status line
       if (totalPending > 0) {
         syncDot.style.background = 'var(--amber)';
         syncText.textContent = `Syncing (${totalPending} pending)`;
-      } else {
+      } else if (totalWork > 0) {
         syncDot.style.background = 'var(--green)';
-        syncText.textContent = 'Synced';
+        syncText.textContent = 'All synced';
+      } else {
+        syncDot.style.background = 'var(--text-dim)';
+        syncText.textContent = 'Idle';
       }
 
-      if (details) {
-        details.innerHTML = `
-          <div style="display:flex;gap:8px;margin-bottom:6px">
-            <span>Pending: ${totalPending}</span>
-            <span>Done: ${totalCompleted}</span>
-            <span>Total: ${totalWork}</span>
-          </div>
-          <button class="btn btn-ghost btn-sm w-full" data-action="sync-trigger" style="font-size:11px;padding:4px 8px">Sync Now</button>
-        `;
+      // Progress bar
+      const pct = totalWork > 0
+        ? Math.max(0, Math.min(100, (totalCompleted / totalWork) * 100))
+        : 0;
+      if (progressFill) {
+        progressFill.style.width = `${pct.toFixed(1)}%`;
+        progressFill.classList.toggle('is-amber', totalPending > 0);
+        progressFill.classList.toggle('is-green', totalPending === 0 && totalWork > 0);
       }
-    } catch {
+      if (progressPct) {
+        progressPct.textContent = totalWork > 0 ? `${Math.round(pct)}%` : '—';
+      }
+      if (progressCounts) {
+        progressCounts.textContent = totalWork > 0
+          ? `${totalCompleted} / ${totalWork}  ·  ${totalPending} pending`
+          : 'No work queued';
+      }
+
+      // Pulse the counts line if the pending value actually changed —
+      // this is the most important affordance: it tells the user
+      // "yes, something just updated, the sync is making progress."
+      if (
+        this._syncIndicatorPrevPending !== null &&
+        this._syncIndicatorPrevPending !== totalPending &&
+        progressCounts
+      ) {
+        progressCounts.classList.remove('pulse-update');
+        // Force reflow so the animation restarts even when the class is re-added
+        void progressCounts.offsetWidth;
+        progressCounts.classList.add('pulse-update');
+      }
+      this._syncIndicatorPrevPending = totalPending;
+
+      this._syncIndicatorLastUpdate = Date.now();
+    } catch (err) {
       syncDot.style.background = 'var(--destructive)';
       syncText.textContent = 'Sync error';
-      if (details) {
-        details.innerHTML = `
-          <div style="color:var(--destructive);margin-bottom:6px">Failed to check sync status</div>
-          <button class="btn btn-ghost btn-sm w-full" data-action="sync-trigger" style="font-size:11px;padding:4px 8px">Sync Now</button>
-        `;
+      if (progressFill) {
+        progressFill.style.width = '0%';
+        progressFill.classList.remove('is-amber', 'is-green');
       }
+      if (progressPct) progressPct.textContent = '—';
+      if (progressCounts) progressCounts.textContent = 'Failed to check sync status';
+    } finally {
+      this._syncIndicatorInFlight = false;
+      if (refreshBtn) refreshBtn.classList.remove('is-loading');
+      if (indicator) indicator.classList.remove('is-loading');
+      this._tickSyncIndicator();
     }
   },
 
