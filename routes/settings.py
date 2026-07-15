@@ -492,7 +492,10 @@ async def restart_containers(request: Request):
 
 class DashboardUser(BaseModel):
     username: str
-    password: str
+    # Optional: the frontend omits the password for existing users when it
+    # wasn't changed (it can't read the stored password back). update_users
+    # preserves the existing password in that case. Required for new users.
+    password: str | None = None
     role: str
 
 
@@ -551,13 +554,24 @@ async def update_users(req: DashboardUsersRequest, request: Request):
 
     _require_env_path()
 
-    # Validate roles
+    # Validate roles, and resolve omitted passwords. The frontend sends no
+    # password for an unchanged existing user — reuse the stored one. A new
+    # user (not in the cache) with no password is a 400.
     for u in req.users:
         if u.role not in ROLE_PERMISSIONS:
             raise HTTPException(
                 status_code=400,
                 detail=f"invalid_role: {u.role} (valid: {', '.join(sorted(ROLE_PERMISSIONS))})",
             )
+        if not u.password:
+            existing = _users_cache.get(u.username)
+            if existing and existing.get("password"):
+                u.password = existing["password"]
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"password_required: {u.username}",
+                )
 
     # CRITICAL FIX: _write_dashboard_users_to_env() calls shutil.copy2(),
     # Path.read_text(), and Path.write_text() — synchronous I/O.
@@ -677,7 +691,7 @@ async def trigger_sync(req: SyncTriggerRequest, request: Request):
             detail="observer_required: no peers found and none supplied",
         )
 
-    await _audit_fire_and_forget("sync.trigger", user=user, detail=f"workspace={req.workspace_id} observer={observer}")
+    _audit_fire_and_forget("sync.trigger", user=user, detail=f"workspace={req.workspace_id} observer={observer}")
 
     log.info("Triggering manual sync for workspace %s (observer=%s, dream_type=%s)", req.workspace_id, observer, req.dream_type)
     try:
