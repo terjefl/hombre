@@ -23,6 +23,25 @@ Hombre gives you a full web UI for workspaces, peers, sessions, chat, and config
 
 Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.5)). No shame about it.
 
+## Fork Changes
+
+This fork adds support for editing additional LLM provider API keys from the **Settings → LLM Provider** section. Upstream only exposes `LLM_OPENAI_API_KEY`; this fork also exposes:
+
+- **`LLM_GEMINI_API_KEY`** — for using Google Gemini as the LLM/embeddings transport
+- **`LLM_ANTHROPIC_API_KEY`** — for using Anthropic Claude as the LLM transport
+
+Both fields render automatically as masked password inputs and are written back to Honcho's env file when saved. No frontend changes were needed — the Settings form renders fields generically from whatever keys the backend returns, so the change is limited to two spots in [`routes/settings.py`](routes/settings.py): the `WRITABLE_KEYS` allow-list and the `llm` section of the `read_settings` response.
+
+### Container image
+
+A GitHub Actions workflow ([`.github/workflows/build-image.yml`](.github/workflows/build-image.yml)) builds this fork and publishes it to `ghcr.io/terjefl/hombre:latest` on every push to `main` (and via manual dispatch). This exists because the upstream image is not publicly pullable.
+
+### Notes for use with Honcho + Anthropic
+
+- **Embeddings must stay on Gemini or OpenAI.** Anthropic has no embedding model, so when switching Honcho's text-generation transports (deriver / dialectic / summary / dream) to `anthropic`, leave `EMBEDDING_MODEL_CONFIG` on Gemini (or OpenAI) and keep that provider's key set — otherwise Honcho won't start.
+- **Model IDs are passed through verbatim** to the provider API, so use exact strings (e.g. `claude-haiku-4-5`, `claude-sonnet-4-5`, `claude-opus-4-8`). A wrong ID returns a 404.
+- **"Apply & Restart" is disabled** when `HONCHO_COMPOSE_DIR` is left unset. After changing settings, restart the Honcho stack yourself (e.g. from Portainer) so the new config is picked up.
+
 ## Features
 
 - **Sync Indicator** — sidebar shows real-time connection status (Connected/Offline), sync progress (pending/done/total) with a progress bar, colorblind-friendly icons, and "Updated Xs ago" timestamp
