@@ -32,9 +32,25 @@ This fork adds support for editing additional LLM provider API keys from the **S
 
 Both fields render automatically as masked password inputs and are written back to Honcho's env file when saved. No frontend changes were needed — the Settings form renders fields generically from whatever keys the backend returns, so the change is limited to two spots in [`routes/settings.py`](routes/settings.py): the `WRITABLE_KEYS` allow-list and the `llm` section of the `read_settings` response.
 
+It also fixes two upstream bugs found while wiring this up, both in [`routes/settings.py`](routes/settings.py):
+
+- **Sync returned 500.** `trigger_sync` did `await _audit_fire_and_forget(...)`, but that helper is a plain `def` returning `None`, so awaiting it raised `TypeError: object NoneType can't be used in 'await' expression`. Fixed by dropping the `await` (the other call site was already correct).
+- **Adding a dashboard user returned 422.** The `DashboardUser` model required `password`, but the frontend omits the password for existing users whose password wasn't changed (it can't read the stored value back). Made `password` optional and had `update_users` preserve the stored password when none is supplied; new users without a password now get a clear 400.
+
 ### Container image
 
-A GitHub Actions workflow ([`.github/workflows/build-image.yml`](.github/workflows/build-image.yml)) builds this fork and publishes it to `ghcr.io/terjefl/hombre:latest` on every push to `main` (and via manual dispatch). This exists because the upstream image is not publicly pullable.
+A GitHub Actions workflow ([`.github/workflows/build-image.yml`](.github/workflows/build-image.yml)) builds this fork and publishes it to `ghcr.io/terjefl/hombre:latest` on every push to `main` (and via manual dispatch). This exists because the upstream image is not publicly pullable — a plain `docker compose pull` fails with `unauthorized` / `pull access denied`.
+
+### Why these changes exist (deploying under Portainer)
+
+The **only** thing that actually blocked the upstream project for me was the image: `ghcr.io/lovethatbrandx/hombre/hombre:latest` isn't publicly pullable. If you run compose yourself on a host, you can just build from source (`build: .`) and it works. Everything else below is specific to my deployment target — **Portainer, deploying the stack from a GitHub repo** — not a flaw in hombre.
+
+Two things about that target are worth knowing if you deploy the same way:
+
+- **Portainer git-stacks only `pull`, never `build`.** So a `build:` directive in compose is ignored, and the image must already exist in a registry. That's why this fork publishes its own image to GHCR (above).
+- **`env_file:` with an absolute host path doesn't resolve under Portainer.** The compose *client* reads `env_file:` at deploy time, and Portainer runs it in a separate working directory that can't see `/home/.../honcho.env` — so it fails with `env file ... not found`. (A bind-mounted `volume:` works, because the Docker *daemon* mounts it at runtime — but hombre reads config from real env vars, and Honcho doesn't auto-load a `.env`.)
+
+hombre is designed to let you edit Honcho's settings from its UI, and the way it does that is by reading and rewriting an env file pointed to by `HONCHO_ENV_PATH` — this is the intended architecture (upstream's own `docker-compose.yml` uses `env_file:` + `HONCHO_ENV_PATH`). To make that file-based model work under Portainer, my Docker stack uses a small **wrapper entrypoint** that sources the host env file into real environment variables before starting each service (`set -a; . /honcho.env; set +a; exec "$@"`), with the file and script bind-mounted as volumes. That stack lives in my infra repo, not here; this note just explains *why* the fork exists and what environment it targets. If you deploy hombre by running compose directly on a host (not via Portainer git-stacks), you don't need any of the wrapper machinery — the upstream `env_file:` approach works as-is; you only need this fork's image and the extra provider keys.
 
 ### Notes for use with Honcho + Anthropic
 
