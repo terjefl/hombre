@@ -38,6 +38,7 @@ _DIALECTIC_VIRTUAL_KEYS = {
 
 WRITABLE_KEYS = {
     "LLM_OPENAI_API_KEY",
+    "LLM_GEMINI_API_KEY",
     "EMBEDDING_MODEL_CONFIG__MODEL",
     "EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL",
     "EMBEDDING_MODEL_CONFIG__TRANSPORT",
@@ -225,6 +226,7 @@ async def read_settings(request: Request):
     sections = {
         "llm": {
             "LLM_OPENAI_API_KEY": env.get("LLM_OPENAI_API_KEY", ""),
+            "LLM_GEMINI_API_KEY": env.get("LLM_GEMINI_API_KEY", ""),
         },
         "embeddings": {
             "EMBEDDING_MODEL_CONFIG__MODEL": env.get("EMBEDDING_MODEL_CONFIG__MODEL", ""),
